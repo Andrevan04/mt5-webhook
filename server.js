@@ -141,20 +141,6 @@ app.get("/api/trades", (req, res) => {
   res.json(loadTrades());
 });
 
-// TEMPORARY — remove this route once MT5 sync is confirmed working.
-// Lets you check from a browser exactly what secret the server is actually
-// using at runtime, instead of guessing whether Render's env var took effect.
-app.get("/api/debug", (req, res) => {
-  const secret = WEBHOOK_SECRET || "";
-  res.json({
-    secretIsSet: secret !== "" && secret !== "change-me",
-    secretLength: secret.length,
-    secretFirst3Chars: secret.slice(0, 3),
-    secretLast3Chars: secret.slice(-3),
-    usingDefault: secret === "change-me",
-  });
-});
-
 app.get("/", (req, res) => {
   res.send("Ledgerline MT5 webhook receiver is running.");
 });
