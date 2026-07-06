@@ -63,13 +63,21 @@ function guessDecimals(symbol) {
  * Maps an incoming MT5 EA payload into a Ledgerline trade object.
  * See LedgerlineTradeSync.mq5 for the exact payload shape it sends.
  */
+function sanitizeAccountLabel(label) {
+  return String(label || "MT5").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "MT5";
+}
+
 function mapToLedgerline(payload) {
   const open = new Date(payload.openTime.replace(".", "-").replace(".", "-"));
   const close = new Date(payload.closeTime.replace(".", "-").replace(".", "-"));
   const durationMinutes = Math.max(0, Math.round((close - open) / 60000));
+  // Namespaced by account label: two different MT5 accounts can each have a
+  // ticket #12345 — without this, the second account's trade would look like
+  // a duplicate of the first and get silently dropped.
+  const accountTag = sanitizeAccountLabel(payload.account);
 
   return {
-    id: "MT5-" + payload.ticket,
+    id: "MT5-" + accountTag + "-" + payload.ticket,
     date: (isNaN(open.getTime()) ? new Date() : open).toISOString(),
     symbol: payload.symbol,
     market: /XAU|JPY|USD|EUR|GBP|CHF|CAD|AUD|NZD/i.test(payload.symbol) && payload.symbol.length <= 7 ? "Forex" : "Indices",
@@ -131,6 +139,20 @@ app.post("/api/trades/mt5", (req, res) => {
 // Journal > Import, or wire it into a real backend's sync job.
 app.get("/api/trades", (req, res) => {
   res.json(loadTrades());
+});
+
+// TEMPORARY — remove this route once MT5 sync is confirmed working.
+// Lets you check from a browser exactly what secret the server is actually
+// using at runtime, instead of guessing whether Render's env var took effect.
+app.get("/api/debug", (req, res) => {
+  const secret = WEBHOOK_SECRET || "";
+  res.json({
+    secretIsSet: secret !== "" && secret !== "change-me",
+    secretLength: secret.length,
+    secretFirst3Chars: secret.slice(0, 3),
+    secretLast3Chars: secret.slice(-3),
+    usingDefault: secret === "change-me",
+  });
 });
 
 app.get("/", (req, res) => {
