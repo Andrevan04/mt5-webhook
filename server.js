@@ -40,6 +40,7 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "change-me";
 const DB_FILE = path.join(__dirname, "trades.json");
+const PRICES_FILE = path.join(__dirname, "prices.json");
 
 function loadTrades() {
   if (!fs.existsSync(DB_FILE)) return [];
@@ -47,6 +48,14 @@ function loadTrades() {
 }
 function saveTrades(trades) {
   fs.writeFileSync(DB_FILE, JSON.stringify(trades, null, 2));
+}
+
+function loadPrices() {
+  if (!fs.existsSync(PRICES_FILE)) return {};
+  try { return JSON.parse(fs.readFileSync(PRICES_FILE, "utf8")); } catch { return {}; }
+}
+function savePrices(prices) {
+  fs.writeFileSync(PRICES_FILE, JSON.stringify(prices, null, 2));
 }
 
 // Rough position-size -> price-per-point mapping so lots/contracts read
@@ -139,6 +148,32 @@ app.post("/api/trades/mt5", (req, res) => {
 // Journal > Import, or wire it into a real backend's sync job.
 app.get("/api/trades", (req, res) => {
   res.json(loadTrades());
+});
+
+app.post("/api/prices/mt5", (req, res) => {
+  const payload = req.body;
+
+  if (!payload || payload.secret !== WEBHOOK_SECRET) {
+    return res.status(401).json({ error: "Invalid or missing secret" });
+  }
+  if (!Array.isArray(payload.prices)) {
+    return res.status(400).json({ error: "Expected a prices array" });
+  }
+
+  const prices = loadPrices();
+  const now = new Date().toISOString();
+  for (const p of payload.prices) {
+    if (!p.symbol) continue;
+    prices[p.symbol] = { bid: Number(p.bid), ask: Number(p.ask), mid: (Number(p.bid) + Number(p.ask)) / 2, updatedAt: now };
+  }
+  savePrices(prices);
+
+  res.status(200).json({ ok: true, symbolsUpdated: payload.prices.length });
+});
+
+// Returns the latest known price for every symbol the EA is streaming.
+app.get("/api/prices", (req, res) => {
+  res.json(loadPrices());
 });
 
 app.get("/", (req, res) => {
